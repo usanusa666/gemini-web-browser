@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 // FIX: Import GroundingChunk to use the official type from the SDK and resolve type errors.
-import { GoogleGenAI, GroundingChunk } from '@google/genai';
+import { GoogleGenAI, GroundingChunk, Modality, Type } from '@google/genai';
 
 
 // --- TYPES ---
@@ -176,11 +176,23 @@ const DuplicateIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+    </svg>
+);
+
+const UploadIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+    </svg>
+);
+
 
 // --- HELPER FUNCTIONS ---
 const getHostname = (url: string): string => {
   try {
-    if (url.startsWith('about:') || url.startsWith('data:')) return 'New Tab';
+    if (url.startsWith('about:') || url.startsWith('data:') || url.startsWith('gemini:')) return 'New Tab';
     const urlObj = new URL(url);
     return urlObj.hostname.replace('www.', '');
   } catch (error) {
@@ -195,7 +207,7 @@ const searchEngines = {
 };
 
 const sanitizeUrl = (url: string, searchEngine: keyof typeof searchEngines): string => {
-  if (url.startsWith('about:') || url.startsWith('data:')) return url;
+  if (url.startsWith('about:') || url.startsWith('data:') || url.startsWith('gemini:')) return url;
   if (!/^(https?|ftp):\/\//i.test(url)) {
     try {
       new URL(`https://${url}`);
@@ -210,9 +222,69 @@ const sanitizeUrl = (url: string, searchEngine: keyof typeof searchEngines): str
   return url;
 };
 
-const NEW_TAB_URL = 'data:text/html,<body style="background-color:transparent;color:#a1a1aa;display:flex;flex-direction:column;gap:1rem;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><h1>New Tab</h1><p style="font-size:0.8rem;max-width:400px;text-align:center;">Note: Some websites like Google or YouTube may not load due to their security policies (X-Frame-Options).</p></body>';
-const INCOGNITO_NEW_TAB_URL = 'data:text/html,<body style="background-color:transparent;color:#a1a1aa;display:flex;flex-direction:column;gap:1rem;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><div style="display:flex;align-items:center;gap:0.5rem;"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:2rem;height:2rem;"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 7.5l-1.5 1.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5l1.5 1.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 15.75a3 3 0 003-3H9a3 3 0 003 3z" /></svg><h1>You\'ve gone Incognito</h1></div><p style="font-size:0.875rem;">Now you can browse privately.</p></body>';
+const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = error => reject(error);
+});
 
+// --- AI TOOLS PAGE & COMPONENTS ---
+const NEW_TAB_PAGE_URL = 'gemini://new-tab';
+
+// FIX: Define the missing AIToolsPage component to resolve the "Cannot find name 'AIToolsPage'" error.
+interface AIToolsPageProps {
+    theme: 'light' | 'dark';
+    incognito: boolean;
+}
+
+const AIToolsPage: React.FC<AIToolsPageProps> = ({ theme, incognito }) => {
+    const isDark = theme === 'dark';
+    const colors = {
+        bg: isDark ? (incognito ? 'bg-gray-900' : 'bg-zinc-800') : (incognito ? 'bg-gray-100' : 'bg-zinc-50'),
+        text: isDark ? 'text-zinc-300' : 'text-zinc-700',
+        title: isDark ? 'text-white' : 'text-black',
+        cardBg: isDark ? 'bg-zinc-700/50' : 'bg-white',
+        cardHover: isDark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-100',
+        cardBorder: isDark ? 'border-zinc-700' : 'border-zinc-200',
+        icon: isDark ? 'text-blue-400' : 'text-blue-600',
+    };
+
+    const tools = [
+        { name: "Generate Image", description: "Create stunning visuals from text prompts.", icon: <SparklesIcon className="w-8 h-8"/> },
+        { name: "Summarize Content", description: "Condense long articles or documents.", icon: <UploadIcon className="w-8 h-8"/> },
+        { name: "Creative Writing", description: "Get help with stories, poems, or scripts.", icon: <EditIcon className="w-8 h-8"/> },
+        { name: "Code Assistant", description: "Generate, debug, and explain code snippets.", icon: <ChatIcon className="w-8 h-8"/> },
+    ];
+
+    return (
+        <div className={`w-full h-full flex flex-col items-center justify-center p-8 ${colors.bg} ${colors.text} overflow-y-auto`}>
+            <div className="text-center mb-12">
+                <h1 className={`text-4xl font-bold ${colors.title} flex items-center justify-center gap-3`}>
+                    <SparklesIcon className="w-10 h-10 text-blue-500" />
+                    Gemini AI Suite
+                </h1>
+                <p className="mt-2 text-lg">Your creative and productive co-pilot.</p>
+                {incognito && (
+                    <div className="mt-4 inline-flex items-center gap-2 bg-yellow-400/20 text-yellow-200 px-3 py-1 rounded-full text-sm">
+                        <IncognitoIcon className="w-4 h-4"/> Incognito Mode
+                    </div>
+                )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl w-full">
+                {tools.map(tool => (
+                    <div key={tool.name} className={`p-6 rounded-lg shadow-md transition-all cursor-pointer ${colors.cardBg} ${colors.cardHover} border ${colors.cardBorder}`}>
+                        <div className={`mb-4 text-blue-500`}>
+                            {tool.icon}
+                        </div>
+                        <h3 className={`text-lg font-semibold mb-2 ${colors.title}`}>{tool.name}</h3>
+                        <p className="text-sm">{tool.description}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 // --- CHILD COMPONENTS ---
 
@@ -331,7 +403,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ activeTab, onNavigate, on
 
   useEffect(() => {
     if (activeTab.url !== inputValue && document.activeElement !== addressBarRef.current) {
-      setInputValue(activeTab.url.startsWith('data:') ? '' : activeTab.url);
+        setInputValue(activeTab.url.startsWith('gemini:') ? '' : activeTab.url);
     }
   }, [activeTab.url, inputValue, addressBarRef]);
 
@@ -983,7 +1055,7 @@ const App: React.FC = () => {
             nextId.current = Math.max(...sessionTabs.map(t => t.id)) + 1;
         } else {
              // Create initial tab if session is empty
-            const initialUrl = currentSettings.homepage || NEW_TAB_URL;
+            const initialUrl = currentSettings.homepage || NEW_TAB_PAGE_URL;
             const firstTab: Tab = { id: nextId.current, url: initialUrl, history: [initialUrl], historyIndex: 0, reloadKey: 0, incognito: false };
             setTabs([firstTab]);
             setActiveTabId(firstTab.id);
@@ -991,7 +1063,7 @@ const App: React.FC = () => {
         }
       } else {
          // Create initial tab if no session
-        const initialUrl = currentSettings.homepage || NEW_TAB_URL;
+        const initialUrl = currentSettings.homepage || NEW_TAB_PAGE_URL;
         const firstTab: Tab = { id: nextId.current, url: initialUrl, history: [initialUrl], historyIndex: 0, reloadKey: 0, incognito: false };
         setTabs([firstTab]);
         setActiveTabId(firstTab.id);
@@ -1042,7 +1114,7 @@ const App: React.FC = () => {
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs.find(t => !t.incognito) || tabs[0];
   
   const handleNewTab = useCallback((incognito = false) => {
-    const defaultUrl = incognito ? INCOGNITO_NEW_TAB_URL : (settings.homepage || NEW_TAB_URL);
+    const defaultUrl = incognito ? NEW_TAB_PAGE_URL : (settings.homepage || NEW_TAB_PAGE_URL);
     const newTab: Tab = { id: nextId.current, url: defaultUrl, history: [defaultUrl], historyIndex: 0, reloadKey: 0, incognito };
     nextId.current++;
     setTabs(prevTabs => [...prevTabs, newTab]);
@@ -1108,7 +1180,14 @@ const App: React.FC = () => {
   }, [activeTab, updateActiveTab]);
 
   const handleReload = useCallback(() => {
-    if (activeTab) updateActiveTab({ reloadKey: activeTab.reloadKey + 1 });
+    if (activeTab) {
+        if(activeTab.url === NEW_TAB_PAGE_URL){
+             updateActiveTab({ reloadKey: activeTab.reloadKey + 1 });
+        } else {
+            const iframe = document.querySelector(`iframe[src="${activeTab.url}"]`) as HTMLIFrameElement;
+            if(iframe) iframe.contentWindow?.location.reload();
+        }
+    }
   }, [activeTab, updateActiveTab]);
 
   const handleReloadSpecificTab = useCallback((tabId: number) => {
@@ -1139,7 +1218,7 @@ const App: React.FC = () => {
   const isCurrentPageBookmarked = activeTab && bookmarks.some(b => b.url === activeTab.url);
 
   const handleToggleBookmark = useCallback(() => {
-    if (!activeTab || activeTab.url.startsWith('data:')) return;
+    if (!activeTab || activeTab.url.startsWith('data:') || activeTab.url.startsWith('gemini:')) return;
     if (isCurrentPageBookmarked) {
       setBookmarks(bs => bs.filter(b => b.url !== activeTab.url));
     } else {
@@ -1321,15 +1400,24 @@ const App: React.FC = () => {
             {activeTab && <NavigationBar activeTab={activeTab} onNavigate={handleNavigate} onBack={handleBack} onForward={handleForward} onReload={handleReload} onToggleBookmark={handleToggleBookmark} isBookmarked={!!isCurrentPageBookmarked} onMenuClick={(el) => { menuAnchorEl.current = el; setMenuOpen(true); }} onChatClick={() => setIsChatOpen(true)} addressBarRef={addressBarRef} theme={settings.theme} />}
             
             <main className={`flex-1 ${contentBg} relative ring-1 ring-inset ${isDark ? 'ring-white/5' : 'ring-black/5'}`}>
-                {tabs.map(tab => (
-                <iframe
-                    key={`${tab.id}-${tab.reloadKey}`}
-                    src={tab.url}
-                    className={`w-full h-full border-none ${activeTabId === tab.id ? 'block' : 'hidden'}`}
-                    title={`Browser tab content for ${tab.url}`}
-                    sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation allow-top-navigation-by-user-activation"
-                ></iframe>
-                ))}
+                {tabs.map(tab => {
+                    if (tab.url === NEW_TAB_PAGE_URL) {
+                        return (
+                             <div key={`${tab.id}-${tab.reloadKey}`} className={`w-full h-full ${activeTabId === tab.id ? 'block' : 'hidden'}`}>
+                                <AIToolsPage theme={settings.theme} incognito={tab.incognito} />
+                            </div>
+                        )
+                    }
+                    return (
+                         <iframe
+                            key={`${tab.id}-${tab.reloadKey}`}
+                            src={tab.url}
+                            className={`w-full h-full border-none ${activeTabId === tab.id ? 'block' : 'hidden'}`}
+                            title={`Browser tab content for ${tab.url}`}
+                            sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation allow-top-navigation-by-user-activation"
+                        ></iframe>
+                    )
+                })}
             </main>
             
             <ContextMenu
