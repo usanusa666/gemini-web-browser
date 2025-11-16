@@ -1,0 +1,7 @@
+{
+  "name": "Gemini Web Browser",
+  "description": "A fully functional web browser built with React and Tailwind CSS, featuring a tabbed interface similar to modern browsers like Chrome.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
